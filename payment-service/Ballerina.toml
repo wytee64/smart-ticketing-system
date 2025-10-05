@@ -1,0 +1,18 @@
+[package]
+org = "user"
+name = "payment_service"
+version = "0.1.0"
+distribution = "2201.12.10"
+
+[build-options]
+observabilityIncluded = true
+
+[[dependency]]
+org = "ballerinax"
+name = "mongodb"
+version = "3.0.0"
+
+[[dependency]]
+org = "ballerinax"
+name = "kafka"
+version = "3.0.0"

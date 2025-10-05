@@ -1,0 +1,5 @@
+mongoHost = "localhost"
+mongoPort = 27017
+mongoDatabase = "passenger_service"
+mongoUsername = "wytee"
+mongoPassword = "cookingdsa"
