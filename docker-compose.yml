@@ -1,0 +1,136 @@
+version: '3.8'
+
+services:
+  # Zookeeper (required for Kafka)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - transport-network
+
+  # Kafka Broker
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - transport-network
+
+  # MongoDB
+  mongodb:
+    image: mongo:7.0
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin123
+    volumes:
+      - mongodb-data:/data/db
+    networks:
+      - transport-network
+
+  # Passenger Service
+  passenger-service:
+    build:
+      context: ./passenger-service
+      dockerfile: Dockerfile
+    container_name: passenger-service
+    ports:
+      - "9001:9001"
+    depends_on:
+      - mongodb
+      - kafka
+    networks:
+      - transport-network
+
+  # Transport Service
+  transport-service:
+    build:
+      context: ./transport-service
+      dockerfile: Dockerfile
+    container_name: transport-service
+    ports:
+      - "9002:9002"
+    depends_on:
+      - mongodb
+      - kafka
+    networks:
+      - transport-network
+
+  # Ticketing Service
+  ticketing-service:
+    build:
+      context: ./ticketing-service
+      dockerfile: Dockerfile
+    container_name: ticketing-service
+    ports:
+      - "9003:9003"
+    depends_on:
+      - mongodb
+      - kafka
+    networks:
+      - transport-network
+
+  # Payment Service
+  payment-service:
+    build:
+      context: ./payment-service
+      dockerfile: Dockerfile
+    container_name: payment-service
+    ports:
+      - "9004:9004"
+    depends_on:
+      - mongodb
+      - kafka
+    networks:
+      - transport-network
+
+  # Notification Service
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    container_name: notification-service
+    ports:
+      - "9005:9005"
+    depends_on:
+      - mongodb
+      - kafka
+    networks:
+      - transport-network
+
+  # Admin Service
+  admin-service:
+    build:
+      context: ./admin-service
+      dockerfile: Dockerfile
+    container_name: admin-service
+    ports:
+      - "9006:9006"
+    depends_on:
+      - mongodb
+      - kafka
+    networks:
+      - transport-network
+
+networks:
+  transport-network:
+    driver: bridge
+
+volumes:
+  mongodb-data:
