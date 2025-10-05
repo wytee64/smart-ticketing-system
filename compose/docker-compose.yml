@@ -1,0 +1,13 @@
+services:
+  notification_service:
+    build:
+      context: ../notification_service   # if compose is outside your service folder
+    container_name: notification_service
+    ports:
+      - "8086:8086"
+    networks:
+      - smart_net
+
+networks:
+  smart_net:
+    driver: bridge
