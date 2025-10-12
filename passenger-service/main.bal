@@ -5,25 +5,18 @@ import ballerinax/kafka;
 import ballerina/log;
 import ballerina/time;
 
-// =======================
-// MongoDB Config
-// =======================
 configurable string mongoHost = "localhost";
 configurable int mongoPort = 27017;
 configurable string mongoDatabase = "db";
 configurable string mongoUsername = ?;
 configurable string mongoPassword = ?;
 
-// =======================
-// Kafka Config
-// =======================
+
 configurable string kafkaHost = "localhost:9092";
 final string passengerEventsTopic = "passenger_events";
 final string ticketEventsTopic = "ticket_events";
 
-// =======================
-// MongoDB Setup
-// =======================
+
 type Passenger record {|
     string passengerId?;
     string name;
@@ -45,16 +38,12 @@ mongodb:Client mongoDb = check new ({
     }
 });
 
-// =======================
-// Kafka Producer Setup
-// =======================
+
 kafka:Producer kafkaProducer = check new (kafka:DEFAULT_URL, {
     clientId: "passenger_service_producer"
 });
 
-// =======================
-// HTTP Service
-// =======================
+
 service /passenger on new http:Listener(9010) {
 
     // Register a new passenger
@@ -74,7 +63,6 @@ service /passenger on new http:Listener(9010) {
 
         check passengersCollection->insertOne(passenger);
 
-        // ✅ Produce Kafka event after registration
         json event = {
             eventType: "passenger_registered",
             passengerId: passengerId,
@@ -190,9 +178,7 @@ service /passenger on new http:Listener(9010) {
     }
 }
 
-// =======================
-// ✅ Kafka Consumer Service
-// =======================
+
 service /ticketConsumer on new kafka:Listener(kafka:DEFAULT_URL, {
     groupId: "passenger-service-ticket-consumer",
     topics: [ticketEventsTopic]
