@@ -55,10 +55,10 @@ services:
       - mongodb
       - kafka
     environment:
-      MONGO_URL_HOST: "mongodb"
+      MONGO_URL_HOST: mongodb
       MONGO_URL_PORT: 27017
-      MONGO_DATABASE: "db"
-      KAFKA_URL: "kafka:9092"
+      MONGO_DATABASE: db
+      KAFKA_URL: kafka:9092
     networks:
       - transport-network
     volumes:
@@ -77,22 +77,14 @@ services:
       - kafka
     environment:
       MONGO_URL: mongodb://wytee:cookingdsa@mongodb:27017/?authSource=admin
-      KAFKA_URL: "kafka:9092"
+      KAFKA_URL: kafka:9092
     networks:
       - transport-network
     volumes:
       - ballerina-cache:/app/target
     restart: unless-stopped
 
-networks:
-  transport-network:
-    driver: bridge
-
-volumes:
-  mongodb-data:
-  ballerina-cache:
-
-passenger-service:
+  passenger-service:
     build:
       context: ./passenger-service
       dockerfile: Dockerfile
@@ -119,10 +111,6 @@ networks:
   transport-network:
     driver: bridge
 
-
 volumes:
   mongodb-data:
   ballerina-cache:
-
-
-  
