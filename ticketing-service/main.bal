@@ -1,6 +1,14 @@
 import ballerina/http;
 import ballerina/log;
 import ballerina/time;
+import ballerinax/mongodb;
+import ballerina/uuid;
+
+configurable string mongoHost = "localhost";
+configurable int mongoPort = 27017;
+configurable string mongoDatabase = "db";
+configurable string mongoUsername = ?;
+configurable string mongoPassword = ?;
 
 // Types
 type Ticket record {|
@@ -23,18 +31,31 @@ type TicketRequest record {|
     int? numberOfRides;
 |};
 
-// In-memory storage
-map<Ticket> tickets = {};
+mongodb:Client mongoDb = check new ({
+    connection: {
+        serverAddress: {
+            host: mongoHost,
+            port: mongoPort
+        },
+        auth: <mongodb:ScramSha256AuthCredential>{
+            username: mongoUsername,
+            password: mongoPassword,
+            database: mongoDatabase
+        }
+    }
+});
 
 // HTTP Service
 service /ticketing on new http:Listener(9003) {
 
     // Create ticket request
     resource function post request(@http:Payload TicketRequest ticketReq) returns json|error {
+        mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
+        mongodb:Collection ticketsCollection = check db->getCollection("tickets");
+
         decimal amount = check calculateTicketAmount(ticketReq.ticketType, ticketReq.numberOfRides);
 
-        string ticketId = "TKT" + time:utcNow()[0].toString();
-
+        string ticketId = uuid:createType1AsString();
         string? expiresAt = calculateExpiryDate(ticketReq.ticketType);
 
         Ticket ticket = {
@@ -50,7 +71,7 @@ service /ticketing on new http:Listener(9003) {
             ridesRemaining: ticketReq.numberOfRides
         };
 
-        tickets[ticketId] = ticket;
+        check ticketsCollection->insertOne(ticket);
 
         log:printInfo("Ticket created: " + ticketId);
 
@@ -65,14 +86,17 @@ service /ticketing on new http:Listener(9003) {
 
     // Validate ticket
     resource function post validate/[string ticketId](@http:Payload json validationData) returns json|error {
-        if (!tickets.hasKey(ticketId)) {
+        mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
+        mongodb:Collection ticketsCollection = check db->getCollection("tickets");
+
+        Ticket? ticket = check ticketsCollection->findOne({"ticketId": ticketId});
+        
+        if ticket is () {
             return {
                 "success": false,
                 "message": "Ticket not found"
             };
         }
-
-        Ticket ticket = tickets.get(ticketId);
 
         if (ticket.status != "PAID" && ticket.status != "CREATED") {
             return {
@@ -82,53 +106,85 @@ service /ticketing on new http:Listener(9003) {
         }
 
         // Update ticket status to VALIDATED
-        ticket.status = "VALIDATED";
-        ticket.validatedAt = time:utcToString(time:utcNow());
+        map<json> updateFields = {
+            "status": "VALIDATED",
+            "validatedAt": time:utcToString(time:utcNow())
+        };
 
         // Decrement rides for multiple ride tickets
         if (ticket.ticketType == "MULTIPLE_RIDES" && ticket.ridesRemaining is int) {
             int remainingRides = <int>ticket.ridesRemaining - 1;
-            ticket.ridesRemaining = remainingRides;
+            updateFields["ridesRemaining"] = remainingRides;
             if (remainingRides > 0) {
-                ticket.status = "PAID";
+                updateFields["status"] = "PAID";
             }
         }
 
-        tickets[ticketId] = ticket;
+        mongodb:Update update = {"set": updateFields};
+        mongodb:UpdateResult updateResult = check ticketsCollection->updateOne({"ticketId": ticketId}, update);
 
         log:printInfo("Ticket validated: " + ticketId);
 
         return {
             "success": true,
             "message": "Ticket validated successfully",
-            "ticketId": ticketId
+            "ticketId": ticketId,
+            "modifiedCount": updateResult.modifiedCount
         };
     }
 
     // Get ticket details
     resource function get [string ticketId]() returns Ticket|http:NotFound|error {
-        if (tickets.hasKey(ticketId)) {
-            return tickets.get(ticketId);
+        mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
+        mongodb:Collection ticketsCollection = check db->getCollection("tickets");
+
+        Ticket? ticket = check ticketsCollection->findOne({"ticketId": ticketId});
+        if ticket is Ticket {
+            return ticket;
         }
         return http:NOT_FOUND;
     }
 
     // Update ticket status to PAID (simulating payment confirmation)
     resource function put [string ticketId]/pay() returns json|error {
-        if (tickets.hasKey(ticketId)) {
-            Ticket ticket = tickets.get(ticketId);
-            ticket.status = "PAID";
-            tickets[ticketId] = ticket;
-            
+        mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
+        mongodb:Collection ticketsCollection = check db->getCollection("tickets");
+
+        Ticket? existingTicket = check ticketsCollection->findOne({"ticketId": ticketId});
+        if existingTicket is () {
             return {
-                "success": true,
-                "message": "Ticket marked as PAID"
+                "success": false,
+                "message": "Ticket not found"
             };
         }
+
+        mongodb:Update update = {"set": {"status": "PAID"}};
+        mongodb:UpdateResult updateResult = check ticketsCollection->updateOne({"ticketId": ticketId}, update);
+        
         return {
-            "success": false,
-            "message": "Ticket not found"
+            "success": true,
+            "message": "Ticket marked as PAID",
+            "modifiedCount": updateResult.modifiedCount
         };
+    }
+
+    // Get all tickets for a passenger
+    resource function get passenger/[string passengerId]() returns json|error {
+        mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
+        mongodb:Collection ticketsCollection = check db->getCollection("tickets");
+
+        stream<Ticket, error?> result = check ticketsCollection->find({"passengerId": passengerId});
+        Ticket[]|error tickets = from Ticket t in result select t;
+
+        if tickets is Ticket[] {
+            return {
+                passengerId: passengerId,
+                tickets: <json>tickets,
+                count: tickets.length()
+            };
+        }
+
+        return {passengerId: passengerId, tickets: [], count: 0};
     }
 
     // Health check
