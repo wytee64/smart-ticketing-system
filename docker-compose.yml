@@ -55,9 +55,7 @@ services:
       - mongodb
       - kafka
     environment:
-      MONGO_URL_HOST: mongodb
-      MONGO_URL_PORT: 27017
-      MONGO_DATABASE: db
+      MONGO_URL: mongodb://wytee:cookingdsa@mongodb:27017/?authSource=admin
       KAFKA_URL: kafka:9092
     networks:
       - transport-network
@@ -107,10 +105,54 @@ services:
         limits:
           memory: 512M
 
-networks:
-  transport-network:
-    driver: bridge
+  ticketing-service:
+    build:
+      context: ./ticketing-service
+      dockerfile: Dockerfile
+    container_name: ticketing-service
+    ports:
+      - "9003:9003"
+    depends_on:
+      - mongodb
+      - kafka
+    environment:
+      MONGO_URL: mongodb://wytee:cookingdsa@mongodb:27017/?authSource=admin
+      KAFKA_URL: kafka:9092
+    networks:
+      - transport-network
+    volumes:
+      - ballerina-cache:/app/target
+    restart: unless-stopped
 
-volumes:
-  mongodb-data:
-  ballerina-cache:
+  transport-services:
+    build:
+      context: ./transport-services
+      dockerfile: Dockerfile
+    container_name: transport-services
+    ports:
+      - "9009:9009"
+    depends_on:
+      - mongodb
+      - kafka
+    environment:
+      MONGO_URL: mongodb://wytee:cookingdsa@mongodb:27017/?authSource=admin
+      KAFKA_URL: kafka:9092
+    networks:
+      - transport-network
+    volumes:
+      - ballerina-cache:/app/target
+    restart: unless-stopped
+
+  notification_service:
+    build:
+      context: ./notification_service
+      dockerfile: Dockerfile
+    container_name: notification_service
+    ports:
+      - "9007:9007"
+    depends_on:
+      - mongodb
+      - kafka
+    environment:
+      MONGO_URL: mongodb://wytee:cookingdsa@mongodb:27017/?authSource=admin
+      KAFKA_URL: kafk_
