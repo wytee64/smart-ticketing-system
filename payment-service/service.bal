@@ -4,15 +4,19 @@ import ballerina/time;
 import ballerinax/mongodb;
 import ballerinax/kafka;
 
-// MongoDB configuration (aligned with ticket service)
-configurable string mongoHost = "mongodb";
+// ---------------------------
+// MongoDB configuration
+// ---------------------------
+configurable string mongoHost = "localhost";
 configurable int mongoPort = 27017;
-configurable string mongoDatabase = "db"; // <-- aligned with ticket service
+configurable string mongoDatabase = "db";
 
 // Kafka configuration
-configurable string kafkaBootstrapServers = "kafka:29092";
+configurable string kafkaBootstrapServers = "localhost:9092";
 
+// ---------------------------
 // MongoDB client
+// ---------------------------
 final mongodb:Client mongoDb = check new ({
     connection: {
         serverAddress: {
@@ -22,7 +26,7 @@ final mongodb:Client mongoDb = check new ({
     }
 });
 
-// Kafka producer for payment events
+// Kafka producer
 final kafka:Producer kafkaProducer = check new (kafkaBootstrapServers, {
     clientId: "payment-service-producer",
     acks: "1",
@@ -31,8 +35,10 @@ final kafka:Producer kafkaProducer = check new (kafkaBootstrapServers, {
     requestTimeout: 5000
 });
 
-// Payment record type
-type Payment record {|
+// ---------------------------
+// Payment types
+// ---------------------------
+type Payment record {
     string _id;
     string ticketId;
     string passengerId;
@@ -41,22 +47,20 @@ type Payment record {|
     string status; // INITIATED, CONFIRMED, FAILED, REFUNDED
     string createdAt;
     string? processedAt;
-|};
+};
 
-// Request types
-type CreatePaymentRequest record {|
+type CreatePaymentRequest record {
     string ticketId;
     string passengerId;
     decimal amount;
     string method;
-|};
+};
 
-type RefundRequest record {|
+type RefundRequest record {
     string reason;
-|};
+};
 
-// Response types
-type PaymentResponse record {|
+type PaymentResponse record {
     string paymentId;
     string ticketId;
     string passengerId;
@@ -66,8 +70,11 @@ type PaymentResponse record {|
     string createdAt;
     string? processedAt;
     string message;
-|};
+};
 
+// ---------------------------
+// Payment Service
+// ---------------------------
 service /payments on new http:Listener(8084) {
 
     resource function get health() returns string {

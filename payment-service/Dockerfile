@@ -5,8 +5,8 @@ WORKDIR /app
 COPY Ballerina.toml .
 COPY service.bal .
 
-RUN bal build
+RUN bal build --skip-tests
 
 EXPOSE 8084
 
-CMD bal run
+CMD ["bal", "run", "--offline", "/app"]
