@@ -189,7 +189,7 @@ service /ticketConsumer on new kafka:Listener(kafka:DEFAULT_URL, {
             string msg = check string:fromBytes(<byte[]>message.value);
             log:printInfo("Received Kafka ticket event: " + msg);
 
-            // Example: update passenger DB with new ticket info
+            //update passenger DB with new ticket info
             json ticketData = check msg.fromJsonString();
             string passengerId = check ticketData.passengerId;
 
