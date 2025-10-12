@@ -1,22 +1,11 @@
-# Use a specific Ballerina image and allow cross-arch on Windows
 FROM --platform=$BUILDPLATFORM ballerina/ballerina:2201.12.10
 
-# Work in a folder we control
-WORKDIR /workspace
+WORKDIR /app
+COPY Ballerina.toml .
+COPY main.bal .
 
-# Use root so we never hit permission errors
-USER root
+# Build the project (no tests are run by 'bal build' anyway)
+RUN bal build
 
-# Copy project files
-COPY . /workspace
-
-# Ensure write perms and build the project
-RUN mkdir -p /workspace/target \
-    && chmod -R 777 /workspace \
-    && bal build
-
-# Expose the service port
-EXPOSE 8086
-
-# Run the service
+EXPOSE 9010
 CMD ["bal", "run"]
