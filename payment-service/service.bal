@@ -9,6 +9,7 @@ configurable int mongoPort = 27017;
 configurable string mongoDatabase = "db";
 configurable string kafkaBootstrapServers = "localhost:9092";
 
+
 final mongodb:Client mongoDb = check new ({
     connection: { serverAddress: { host: mongoHost, port: mongoPort } }
 });
