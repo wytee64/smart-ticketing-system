@@ -4,64 +4,22 @@ import ballerina/time;
 import ballerinax/mongodb;
 import ballerinax/kafka;
 
-// ---------------------------
-// MongoDB configuration
-// ---------------------------
 configurable string mongoHost = "localhost";
 configurable int mongoPort = 27017;
 configurable string mongoDatabase = "db";
-
-// Kafka configuration
 configurable string kafkaBootstrapServers = "localhost:9092";
 
-// ---------------------------
-// MongoDB client
-// ---------------------------
 final mongodb:Client mongoDb = check new ({
-    connection: {
-        serverAddress: {
-            host: mongoHost,
-            port: mongoPort
-        }
-    }
+    connection: { serverAddress: { host: mongoHost, port: mongoPort } }
 });
 
-// Kafka producer
 final kafka:Producer kafkaProducer = check new (kafkaBootstrapServers, {
     clientId: "payment-service-producer",
-    acks: "1",
-    retryCount: 3,
-    maxBlock: 5000,
-    requestTimeout: 5000
+    acks: "1", retryCount: 3, maxBlock: 5000, requestTimeout: 5000
 });
 
-// ---------------------------
-// Payment types
-// ---------------------------
-type Payment record {
+type Payment record {|
     string _id;
-    string ticketId;
-    string passengerId;
-    decimal amount;
-    string method; // CARD, MOBILE_MONEY, CASH
-    string status; // INITIATED, CONFIRMED, FAILED, REFUNDED
-    string createdAt;
-    string? processedAt;
-};
-
-type CreatePaymentRequest record {
-    string ticketId;
-    string passengerId;
-    decimal amount;
-    string method;
-};
-
-type RefundRequest record {
-    string reason;
-};
-
-type PaymentResponse record {
-    string paymentId;
     string ticketId;
     string passengerId;
     decimal amount;
@@ -69,166 +27,114 @@ type PaymentResponse record {
     string status;
     string createdAt;
     string? processedAt;
-    string message;
-};
+|};
 
-// ---------------------------
-// Payment Service
-// ---------------------------
+type CreatePaymentRequest record {|
+    string ticketId;
+    string passengerId;
+    decimal amount;
+    string method;
+|};
+
+type RefundRequest record {|
+    string reason;
+|};
+
 service /payments on new http:Listener(8084) {
 
-    resource function get health() returns string {
-        return "OK";
-    }
+    resource function get health() returns string => "OK";
 
-    resource function post .(@http:Payload CreatePaymentRequest request)
-            returns PaymentResponse|http:Response|error {
-
+    resource function post .(@http:Payload CreatePaymentRequest req)
+            returns json|http:Response|error {
         mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
-        mongodb:Collection paymentsCollection = check db->getCollection("payments");
+        mongodb:Collection coll = check db->getCollection("payments");
 
-        string paymentId = uuid:createType1AsString();
-        string currentTime = time:utcToString(time:utcNow());
+        string id = uuid:createType1AsString();
+        string now = time:utcToString(time:utcNow());
 
-        Payment newPayment = {
-            _id: paymentId,
-            ticketId: request.ticketId,
-            passengerId: request.passengerId,
-            amount: request.amount,
-            method: request.method,
-            status: "CONFIRMED",
-            createdAt: currentTime,
-            processedAt: currentTime
+        Payment payment = {
+            _id: id, ticketId: req.ticketId, passengerId: req.passengerId,
+            amount: req.amount, method: req.method, status: "CONFIRMED",
+            createdAt: now, processedAt: now
         };
 
-        check paymentsCollection->insertOne(newPayment);
+        check coll->insertOne(payment);
 
-        json paymentEvent = {
-            "paymentId": paymentId,
-            "ticketId": request.ticketId,
-            "passengerId": request.passengerId,
-            "amount": request.amount,
-            "status": "CONFIRMED",
-            "timestamp": currentTime
+        json event = {
+            paymentId: id, ticketId: req.ticketId, passengerId: req.passengerId,
+            amount: req.amount, status: "CONFIRMED", timestamp: now
         };
 
         check kafkaProducer->send({
             topic: "payments.processed",
-            value: paymentEvent.toString().toBytes()
+            value: event.toString().toBytes()
         });
 
-        return {
-            paymentId: paymentId,
-            ticketId: request.ticketId,
-            passengerId: request.passengerId,
-            amount: request.amount,
-            method: request.method,
-            status: "CONFIRMED",
-            createdAt: currentTime,
-            processedAt: currentTime,
-            message: "Payment processed successfully"
-        };
+        return payment.cloneReadOnly();
     }
 
-    resource function get [string paymentId]() returns Payment|http:Response|error {
+    resource function get [string id]() returns Payment|http:Response|error {
         mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
-        mongodb:Collection paymentsCollection = check db->getCollection("payments");
+        mongodb:Collection coll = check db->getCollection("payments");
 
-        stream<Payment, error?> paymentStream = check paymentsCollection->find({_id: paymentId});
-        Payment[]? payments = check from Payment p in paymentStream select p;
+        stream<Payment, error?> results = check coll->find({ _id: id });
+        Payment[] payments = check from Payment p in results select p;
 
-        if payments is () || payments.length() == 0 {
+        if payments.length() == 0 {
             http:Response res = new;
             res.statusCode = 404;
-            res.setJsonPayload({message: "Payment not found"});
+            res.setJsonPayload({ message: "Payment not found" });
             return res;
         }
-
         return payments[0];
     }
 
-    resource function get ticket/[string ticketId]() returns json|error {
-        mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
-        mongodb:Collection paymentsCollection = check db->getCollection("payments");
-
-        int paymentCount = check paymentsCollection->countDocuments({ticketId: ticketId});
-
-        return {
-            "ticketId": ticketId,
-            "totalPayments": paymentCount,
-            "message": "Payment data retrieved"
-        };
-    }
-
-    resource function post [string paymentId]/refund(@http:Payload RefundRequest request)
+    resource function post [string id]/refund(@http:Payload RefundRequest req)
             returns json|http:Response|error {
-
         mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
-        mongodb:Collection paymentsCollection = check db->getCollection("payments");
+        mongodb:Collection coll = check db->getCollection("payments");
 
-        stream<Payment, error?> paymentStream = check paymentsCollection->find({_id: paymentId});
-        Payment[]? payments = check from Payment p in paymentStream select p;
+        stream<Payment, error?> s = check coll->find({ _id: id });
+        Payment[] payments = check from Payment p in s select p;
 
-        if payments is () || payments.length() == 0 {
+        if payments.length() == 0 {
             http:Response res = new;
             res.statusCode = 404;
-            res.setJsonPayload({message: "Payment not found"});
+            res.setJsonPayload({ message: "Payment not found" });
             return res;
         }
 
-        Payment payment = payments[0];
-
-        if payment.status != "CONFIRMED" {
+        Payment p = payments[0];
+        if p.status != "CONFIRMED" {
             http:Response res = new;
             res.statusCode = 400;
-            res.setJsonPayload({message: "Only confirmed payments can be refunded"});
+            res.setJsonPayload({ message: "Only confirmed payments can be refunded" });
             return res;
         }
 
-        string refundTime = time:utcToString(time:utcNow());
+        string now = time:utcToString(time:utcNow());
+        _ = check coll->updateOne({ _id: id }, { "$set": { status: "REFUNDED", processedAt: now } });
 
-        mongodb:UpdateResult _ = check paymentsCollection->updateOne(
-            {_id: paymentId},
-            {set: {status: "REFUNDED", processedAt: refundTime}}
-        );
-
-        json refundEvent = {
-            "paymentId": paymentId,
-            "ticketId": payment.ticketId,
-            "passengerId": payment.passengerId,
-            "amount": payment.amount,
-            "status": "REFUNDED",
-            "reason": request.reason,
-            "timestamp": refundTime
+        json event = {
+            paymentId: id, ticketId: p.ticketId, passengerId: p.passengerId,
+            amount: p.amount, status: "REFUNDED", reason: req.reason, timestamp: now
         };
-
         check kafkaProducer->send({
             topic: "payments.processed",
-            value: refundEvent.toString().toBytes()
+            value: event.toString().toBytes()
         });
 
-        return {
-            "paymentId": paymentId,
-            "status": "REFUNDED",
-            "refundedAt": refundTime,
-            "reason": request.reason,
-            "message": "Payment refunded successfully"
-        };
+        return { paymentId: id, status: "REFUNDED", refundedAt: now, message: "Payment refunded" };
     }
 
     resource function get all() returns json|error {
         mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
-        mongodb:Collection paymentsCollection = check db->getCollection("payments");
+        mongodb:Collection coll = check db->getCollection("payments");
 
-        int totalPayments = check paymentsCollection->countDocuments({});
-        int confirmedPayments = check paymentsCollection->countDocuments({status: "CONFIRMED"});
-        int refundedPayments = check paymentsCollection->countDocuments({status: "REFUNDED"});
+        int total = check coll->countDocuments({});
+        int confirmed = check coll->countDocuments({ status: "CONFIRMED" });
+        int refunded = check coll->countDocuments({ status: "REFUNDED" });
 
-        return {
-            "totalPayments": totalPayments,
-            "confirmedPayments": confirmedPayments,
-            "refundedPayments": refundedPayments,
-            "message": "Payment statistics retrieved"
-        };
+        return { total, confirmed, refunded };
     }
 }
