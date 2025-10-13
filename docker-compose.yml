@@ -13,7 +13,7 @@ services:
       - transport-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "echo", "ruok", "|", "nc", "localhost", "2181"]
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -30,8 +30,9 @@ services:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     networks:
       - transport-network
     restart: unless-stopped
@@ -81,12 +82,33 @@ services:
         limits:
           memory: 512M
 
+  passenger-service:
+    build:
+      context: ./passenger-service
+      dockerfile: Dockerfile
+    container_name: passenger-service
+    ports:
+      - "9010:9010"
+    depends_on:
+      - mongodb
+      - kafka
+    environment:
+      MONGO_URL: mongodb://wytee:cookingdsa@mongodb:27017/?authSource=admin
+      KAFKA_URL: kafka:9092
+    volumes:
+      - ballerina-cache:/app/target
+    networks:
+      - transport-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
 networks:
   transport-network:
     driver: bridge
 
-
 volumes:
   mongodb-data:
   ballerina-cache:
-   
