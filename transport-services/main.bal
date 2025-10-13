@@ -98,7 +98,7 @@ function kafkaConsumerWorker() returns error? {
 }
 
 function handleTicketPurchased(kafka:ConsumerRecord kafkaRecord) {
-    io:println("\n🎫 RECEIVED TICKET PURCHASE NOTIFICATION:");
+    io:println("\n RECEIVED TICKET PURCHASE NOTIFICATION:");
     
     // Parse the ticket purchased event from byte array
     byte[] messageBytes = kafkaRecord.value;
@@ -144,7 +144,7 @@ function publishScheduleUpdate(ScheduleUpdate update) returns error? {
         key: update.tripId
     });
     
-    io:println("📢 Published schedule update to Kafka:");
+    io:println(" Published schedule update to Kafka:");
     io:println("   Topic: schedule.updates");
     io:println("   Trip: " + update.tripId);
     io:println("   Update: " + update.updateType);
@@ -153,7 +153,7 @@ function publishScheduleUpdate(ScheduleUpdate update) returns error? {
 
 // === MENU FUNCTIONS ===
 function printMainMenu() {
-    io:println("\n📋 MAIN MENU:");
+    io:println("\n MAIN MENU:");
     io:println("1. Create New Route");
     io:println("2. Create New Trip");
     io:println("3. View All Routes");
@@ -163,7 +163,7 @@ function printMainMenu() {
 }
 
 function createNewRoute() returns error? {
-    io:println("\n🛣️ CREATE NEW ROUTE");
+    io:println("\n CREATE NEW ROUTE");
     
     string routeName = io:readln("Route Name: ");
     string routeType = io:readln("Route Type (BUS/TRAIN): ");
@@ -203,7 +203,7 @@ function createNewRoute() returns error? {
     
     check routesCollection->insertOne(newRoute);
     
-    io:println("✅ Route created successfully!");
+    io:println(" Route created successfully!");
 }
 
 function createNewTrip() returns error? {
@@ -239,11 +239,11 @@ function createNewTrip() returns error? {
     
     check tripsCollection->insertOne(newTrip);
     
-    io:println("✅ Trip created successfully!");
+    io:println(" Trip created successfully!");
 }
 
 function viewAllRoutes() returns error? {
-    io:println("\n📄 ALL ACTIVE ROUTES:");
+    io:println("\n ALL ACTIVE ROUTES:");
     
     mongodb:Database database = check mongoClient->getDatabase(databaseName);
     mongodb:Collection routesCollection = check database->getCollection("routes");
@@ -271,7 +271,7 @@ function viewAllRoutes() returns error? {
 function viewTripsForRoute() returns error? {
     string routeId = io:readln("Enter Route ID: ");
     
-    io:println("\n🚍 TRIPS FOR ROUTE: " + routeId);
+    io:println("\n TRIPS FOR ROUTE: " + routeId);
     
     mongodb:Database database = check mongoClient->getDatabase(databaseName);
     mongodb:Collection tripsCollection = check database->getCollection("trips");
@@ -298,7 +298,7 @@ function viewTripsForRoute() returns error? {
 }
 
 function updateTripStatus() returns error? {
-    io:println("\n🔄 UPDATE TRIP STATUS");
+    io:println("\n UPDATE TRIP STATUS");
     
     string tripId = io:readln("Trip ID: ");
     io:println("Status Options: DELAYED, CANCELLED, DEPARTED, ARRIVED");
@@ -335,9 +335,9 @@ function updateTripStatus() returns error? {
         };
         
         _ = check publishScheduleUpdate(update);
-        io:println("✅ Trip status updated and notification sent!");
+        io:println(" Trip status updated and notification sent!");
     } else {
-        io:println("❌ Trip not found!");
+        io:println(" Trip not found!");
     }
 }
 
