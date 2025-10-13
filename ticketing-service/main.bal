@@ -3,12 +3,18 @@ import ballerina/log;
 import ballerina/time;
 import ballerinax/mongodb;
 import ballerina/uuid;
+import ballerinax/kafka;
 
 configurable string mongoHost = "localhost";
 configurable int mongoPort = 27017;
 configurable string mongoDatabase = "db";
 configurable string mongoUsername = ?;
 configurable string mongoPassword = ?;
+
+// Kafka Configuration
+configurable string kafkaHost = "localhost:9092";
+final string ticketEventsTopic = "ticket_events";
+final string passengerEventsTopic = "passenger_events";
 
 // Types
 type Ticket record {|
@@ -45,6 +51,11 @@ mongodb:Client mongoDb = check new ({
     }
 });
 
+// Kafka Producer for sending ticket events
+kafka:Producer kafkaProducer = check new (kafkaHost, {
+    clientId: "ticketing_service_producer"
+});
+
 // HTTP Service
 service /ticketing on new http:Listener(9003) {
 
@@ -72,6 +83,22 @@ service /ticketing on new http:Listener(9003) {
         };
 
         check ticketsCollection->insertOne(ticket);
+
+        // Send Kafka event
+        json ticketEvent = {
+            eventType: "ticket_created",
+            ticketId: ticketId,
+            passengerId: ticketReq.passengerId,
+            ticketType: ticketReq.ticketType,
+            amount: amount,
+            status: "CREATED",
+            timestamp: time:utcToString(time:utcNow())
+        };
+
+        check kafkaProducer->send({
+            topic: ticketEventsTopic,
+            value: ticketEvent.toJsonString()
+        });
 
         log:printInfo("Ticket created: " + ticketId);
 
@@ -123,6 +150,19 @@ service /ticketing on new http:Listener(9003) {
         mongodb:Update update = {"set": updateFields};
         mongodb:UpdateResult updateResult = check ticketsCollection->updateOne({"ticketId": ticketId}, update);
 
+        // Send Kafka event for ticket validation
+        json validationEvent = {
+            eventType: "ticket_validated",
+            ticketId: ticketId,
+            passengerId: ticket.passengerId,
+            timestamp: time:utcToString(time:utcNow())
+        };
+
+        check kafkaProducer->send({
+            topic: ticketEventsTopic,
+            value: validationEvent.toJsonString()
+        });
+
         log:printInfo("Ticket validated: " + ticketId);
 
         return {
@@ -131,18 +171,6 @@ service /ticketing on new http:Listener(9003) {
             "ticketId": ticketId,
             "modifiedCount": updateResult.modifiedCount
         };
-    }
-
-    // Get ticket details
-    resource function get [string ticketId]() returns Ticket|http:NotFound|error {
-        mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
-        mongodb:Collection ticketsCollection = check db->getCollection("tickets");
-
-        Ticket? ticket = check ticketsCollection->findOne({"ticketId": ticketId});
-        if ticket is Ticket {
-            return ticket;
-        }
-        return http:NOT_FOUND;
     }
 
     // Update ticket status to PAID (simulating payment confirmation)
@@ -161,6 +189,20 @@ service /ticketing on new http:Listener(9003) {
         mongodb:Update update = {"set": {"status": "PAID"}};
         mongodb:UpdateResult updateResult = check ticketsCollection->updateOne({"ticketId": ticketId}, update);
         
+        // Send Kafka event for payment
+        json paymentEvent = {
+            eventType: "ticket_paid",
+            ticketId: ticketId,
+            passengerId: existingTicket.passengerId,
+            amount: existingTicket.amount,
+            timestamp: time:utcToString(time:utcNow())
+        };
+
+        check kafkaProducer->send({
+            topic: ticketEventsTopic,
+            value: paymentEvent.toJsonString()
+        });
+
         return {
             "success": true,
             "message": "Ticket marked as PAID",
@@ -168,7 +210,18 @@ service /ticketing on new http:Listener(9003) {
         };
     }
 
-    // Get all tickets for a passenger
+    // Other functions remain the same...
+    resource function get [string ticketId]() returns Ticket|http:NotFound|error {
+        mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
+        mongodb:Collection ticketsCollection = check db->getCollection("tickets");
+
+        Ticket? ticket = check ticketsCollection->findOne({"ticketId": ticketId});
+        if ticket is Ticket {
+            return ticket;
+        }
+        return http:NOT_FOUND;
+    }
+
     resource function get passenger/[string passengerId]() returns json|error {
         mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
         mongodb:Collection ticketsCollection = check db->getCollection("tickets");
@@ -187,7 +240,6 @@ service /ticketing on new http:Listener(9003) {
         return {passengerId: passengerId, tickets: [], count: 0};
     }
 
-    // Health check
     resource function get health() returns json {
         return {
             "service": "ticketing-service",
@@ -197,7 +249,7 @@ service /ticketing on new http:Listener(9003) {
     }
 }
 
-// Utility functions
+// Utility functions (same as before)
 function calculateTicketAmount(string ticketType, int? numberOfRides) returns decimal|error {
     match ticketType {
         "SINGLE_RIDE" => {
