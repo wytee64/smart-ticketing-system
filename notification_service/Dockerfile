@@ -1,11 +1,18 @@
+# Use Ballerina runtime image with multi-platform support
 FROM --platform=$BUILDPLATFORM ballerina/ballerina:2201.12.10
 
+# Set working directory
 WORKDIR /app
+
+# Copy Ballerina project files
 COPY Ballerina.toml .
 COPY main.bal .
 
-# Build the project (no tests are run by 'bal build' anyway)
+# Build the Ballerina application
 RUN bal build
 
-EXPOSE 9010
-CMD ["bal", "run"]
+# Expose port
+EXPOSE 8085
+
+# Run the application using the built JAR
+CMD ["bal", "run", "target/bin/notification_service.jar"]
