@@ -1,6 +1,20 @@
 import ballerina/http;
 import ballerina/log;
 import ballerina/time;
+import ballerinax/mongodb;
+import ballerina/uuid;
+import ballerinax/kafka;
+
+configurable string mongoHost = "localhost";
+configurable int mongoPort = 27017;
+configurable string mongoDatabase = "db";
+configurable string mongoUsername = ?;
+configurable string mongoPassword = ?;
+
+// Kafka Configuration
+configurable string kafkaHost = "localhost:9092";
+final string ticketEventsTopic = "ticket_events";
+final string passengerEventsTopic = "passenger_events";
 
 // Types
 type Ticket record {|
@@ -23,18 +37,36 @@ type TicketRequest record {|
     int? numberOfRides;
 |};
 
-// In-memory storage
-map<Ticket> tickets = {};
+mongodb:Client mongoDb = check new ({
+    connection: {
+        serverAddress: {
+            host: mongoHost,
+            port: mongoPort
+        },
+        auth: <mongodb:ScramSha256AuthCredential>{
+            username: mongoUsername,
+            password: mongoPassword,
+            database: mongoDatabase
+        }
+    }
+});
+
+// Kafka Producer for sending ticket events
+kafka:Producer kafkaProducer = check new (kafkaHost, {
+    clientId: "ticketing_service_producer"
+});
 
 // HTTP Service
 service /ticketing on new http:Listener(9003) {
 
     // Create ticket request
     resource function post request(@http:Payload TicketRequest ticketReq) returns json|error {
+        mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
+        mongodb:Collection ticketsCollection = check db->getCollection("tickets");
+
         decimal amount = check calculateTicketAmount(ticketReq.ticketType, ticketReq.numberOfRides);
 
-        string ticketId = "TKT" + time:utcNow()[0].toString();
-
+        string ticketId = uuid:createType1AsString();
         string? expiresAt = calculateExpiryDate(ticketReq.ticketType);
 
         Ticket ticket = {
@@ -50,7 +82,23 @@ service /ticketing on new http:Listener(9003) {
             ridesRemaining: ticketReq.numberOfRides
         };
 
-        tickets[ticketId] = ticket;
+        check ticketsCollection->insertOne(ticket);
+
+        // Send Kafka event
+        json ticketEvent = {
+            eventType: "ticket_created",
+            ticketId: ticketId,
+            passengerId: ticketReq.passengerId,
+            ticketType: ticketReq.ticketType,
+            amount: amount,
+            status: "CREATED",
+            timestamp: time:utcToString(time:utcNow())
+        };
+
+        check kafkaProducer->send({
+            topic: ticketEventsTopic,
+            value: ticketEvent.toJsonString()
+        });
 
         log:printInfo("Ticket created: " + ticketId);
 
@@ -65,14 +113,17 @@ service /ticketing on new http:Listener(9003) {
 
     // Validate ticket
     resource function post validate/[string ticketId](@http:Payload json validationData) returns json|error {
-        if (!tickets.hasKey(ticketId)) {
+        mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
+        mongodb:Collection ticketsCollection = check db->getCollection("tickets");
+
+        Ticket? ticket = check ticketsCollection->findOne({"ticketId": ticketId});
+        
+        if ticket is () {
             return {
                 "success": false,
                 "message": "Ticket not found"
             };
         }
-
-        Ticket ticket = tickets.get(ticketId);
 
         if (ticket.status != "PAID" && ticket.status != "CREATED") {
             return {
@@ -82,56 +133,113 @@ service /ticketing on new http:Listener(9003) {
         }
 
         // Update ticket status to VALIDATED
-        ticket.status = "VALIDATED";
-        ticket.validatedAt = time:utcToString(time:utcNow());
+        map<json> updateFields = {
+            "status": "VALIDATED",
+            "validatedAt": time:utcToString(time:utcNow())
+        };
 
         // Decrement rides for multiple ride tickets
         if (ticket.ticketType == "MULTIPLE_RIDES" && ticket.ridesRemaining is int) {
             int remainingRides = <int>ticket.ridesRemaining - 1;
-            ticket.ridesRemaining = remainingRides;
+            updateFields["ridesRemaining"] = remainingRides;
             if (remainingRides > 0) {
-                ticket.status = "PAID";
+                updateFields["status"] = "PAID";
             }
         }
 
-        tickets[ticketId] = ticket;
+        mongodb:Update update = {"set": updateFields};
+        mongodb:UpdateResult updateResult = check ticketsCollection->updateOne({"ticketId": ticketId}, update);
+
+        // Send Kafka event for ticket validation
+        json validationEvent = {
+            eventType: "ticket_validated",
+            ticketId: ticketId,
+            passengerId: ticket.passengerId,
+            timestamp: time:utcToString(time:utcNow())
+        };
+
+        check kafkaProducer->send({
+            topic: ticketEventsTopic,
+            value: validationEvent.toJsonString()
+        });
 
         log:printInfo("Ticket validated: " + ticketId);
 
         return {
             "success": true,
             "message": "Ticket validated successfully",
-            "ticketId": ticketId
+            "ticketId": ticketId,
+            "modifiedCount": updateResult.modifiedCount
         };
-    }
-
-    // Get ticket details
-    resource function get [string ticketId]() returns Ticket|http:NotFound|error {
-        if (tickets.hasKey(ticketId)) {
-            return tickets.get(ticketId);
-        }
-        return http:NOT_FOUND;
     }
 
     // Update ticket status to PAID (simulating payment confirmation)
     resource function put [string ticketId]/pay() returns json|error {
-        if (tickets.hasKey(ticketId)) {
-            Ticket ticket = tickets.get(ticketId);
-            ticket.status = "PAID";
-            tickets[ticketId] = ticket;
-            
+        mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
+        mongodb:Collection ticketsCollection = check db->getCollection("tickets");
+
+        Ticket? existingTicket = check ticketsCollection->findOne({"ticketId": ticketId});
+        if existingTicket is () {
             return {
-                "success": true,
-                "message": "Ticket marked as PAID"
+                "success": false,
+                "message": "Ticket not found"
             };
         }
+
+        mongodb:Update update = {"set": {"status": "PAID"}};
+        mongodb:UpdateResult updateResult = check ticketsCollection->updateOne({"ticketId": ticketId}, update);
+        
+        // Send Kafka event for payment
+        json paymentEvent = {
+            eventType: "ticket_paid",
+            ticketId: ticketId,
+            passengerId: existingTicket.passengerId,
+            amount: existingTicket.amount,
+            timestamp: time:utcToString(time:utcNow())
+        };
+
+        check kafkaProducer->send({
+            topic: ticketEventsTopic,
+            value: paymentEvent.toJsonString()
+        });
+
         return {
-            "success": false,
-            "message": "Ticket not found"
+            "success": true,
+            "message": "Ticket marked as PAID",
+            "modifiedCount": updateResult.modifiedCount
         };
     }
 
-    // Health check
+    // Other functions remain the same...
+    resource function get [string ticketId]() returns Ticket|http:NotFound|error {
+        mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
+        mongodb:Collection ticketsCollection = check db->getCollection("tickets");
+
+        Ticket? ticket = check ticketsCollection->findOne({"ticketId": ticketId});
+        if ticket is Ticket {
+            return ticket;
+        }
+        return http:NOT_FOUND;
+    }
+
+    resource function get passenger/[string passengerId]() returns json|error {
+        mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
+        mongodb:Collection ticketsCollection = check db->getCollection("tickets");
+
+        stream<Ticket, error?> result = check ticketsCollection->find({"passengerId": passengerId});
+        Ticket[]|error tickets = from Ticket t in result select t;
+
+        if tickets is Ticket[] {
+            return {
+                passengerId: passengerId,
+                tickets: <json>tickets,
+                count: tickets.length()
+            };
+        }
+
+        return {passengerId: passengerId, tickets: [], count: 0};
+    }
+
     resource function get health() returns json {
         return {
             "service": "ticketing-service",
@@ -141,7 +249,7 @@ service /ticketing on new http:Listener(9003) {
     }
 }
 
-// Utility functions
+// Utility functions (same as before)
 function calculateTicketAmount(string ticketType, int? numberOfRides) returns decimal|error {
     match ticketType {
         "SINGLE_RIDE" => {

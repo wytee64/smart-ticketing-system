@@ -1,13 +1,21 @@
 import ballerina/http;
 import ballerinax/mongodb;
 import ballerina/uuid;
-
+import ballerinax/kafka;
+import ballerina/log;
+import ballerina/time;
 
 configurable string mongoHost = "localhost";
 configurable int mongoPort = 27017;
 configurable string mongoDatabase = "db";
 configurable string mongoUsername = ?;
 configurable string mongoPassword = ?;
+
+
+configurable string kafkaHost = "localhost:9092";
+final string passengerEventsTopic = "passenger_events";
+final string ticketEventsTopic = "ticket_events";
+
 
 type Passenger record {|
     string passengerId?;
@@ -30,150 +38,133 @@ mongodb:Client mongoDb = check new ({
     }
 });
 
+
+kafka:Producer kafkaProducer = check new (kafka:DEFAULT_URL, {
+    clientId: "passenger_service_producer"
+});
+
+
 service /passenger on new http:Listener(9010) {
 
-    //  Register a new passenger
-    //  how to call it, POST /passenger/register
+    // Register a new passenger
     resource function post register(@http:Payload Passenger passenger) returns json|error {
         mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
         mongodb:Collection passengersCollection = check db->getCollection("passengers");
-
         stream<Passenger, error?> existingPassengers = check passengersCollection->find({"phoneNumber": passenger.phoneNumber});
-        Passenger[]|error passengers = from Passenger p in existingPassengers  // Convert stream to array
-            select p;
-        
-        if passengers is Passenger[] && passengers.length() > 0 {
-            return {
-                "success": false,
-                "message": "phone number already registered"    
-            };
-        }
-
-        string passengerId = uuid:createType1AsString();
+        Passenger[]|error passengers = from Passenger p in existingPassengers select p;
+        if passengers is Passenger[] && passengers.length() > 0 {return {"success": false, "message": "phone number already registered"};}
+        string passengerId = uuid:createRandomUuid();
         passenger.passengerId = passengerId;
-
         check passengersCollection->insertOne(passenger);
 
+        json event = {
+            eventType: "passenger_registered",
+            passengerId: passengerId,
+            name: passenger.name,
+            phoneNumber: passenger.phoneNumber,
+            timestamp: time:utcNow().toString()
+        };
+
+        check kafkaProducer->send({
+            topic: passengerEventsTopic,
+            value: event.toJsonString()
+        });
         return {
-            "success": true,
-            "message": "passenger registered",
-            "passengerId": passengerId
+            success: true,
+            message: "Passenger registered successfully",
+            passengerId: passengerId
         };
     }
 
-    //  passenger login
-    //  how to call it, POST /passenger/login
+    // Passenger login
     resource function post login(string emailE, string passwordE) returns json|error {
         mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
         mongodb:Collection passengersCollection = check db->getCollection("passengers");
-
         stream<Passenger, error?> result = check passengersCollection->find({"email": emailE, "password": passwordE});
         Passenger[]|error passengers = from Passenger p in result select p;
-
         if passengers is Passenger[] && passengers.length() > 0 {
             Passenger p = passengers[0];
-            return {
-                success: true,
-                message: "successful login",
-                passengerId: p.passengerId
-            };
+            return {success: true, message: "successful login", passengerId: p.passengerId};
         }
-        return {
-            success: false,
-            message: "incorrect password or email",
-            passengerId: ()
-        };
+
+        return {success: false, message: "incorrect password or email", passengerId: ()};
     }
 
-    //  Get passenger profile information
-    //  how to call it, GET /passenger/profile/{passengerId}
+    // Get passenger profile
     resource function get profile/[string passengerId]() returns Passenger|http:NotFound|error {
         mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
         mongodb:Collection passengersCollection = check db->getCollection("passengers");
-
         Passenger? passenger = check passengersCollection->findOne({"passengerId": passengerId});
         if passenger is Passenger {return passenger;}
         return http:NOT_FOUND;
     }
 
-    //  Update passenger profile
-    //  how to call it, PUT /passenger/profile/{passengerId}
+    // Update profile
     resource function put profile/[string passengerId](@http:Payload json payload) returns json|error {
-        final mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
+        mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
         mongodb:Collection passengersCollection = check db->getCollection("passengers");
-
         Passenger? existingPassenger = check passengersCollection->findOne({"passengerId": passengerId});
-        if existingPassenger is () {return {success: false,message: "Passenger not found"};}
-
+        if existingPassenger is () {return {success: false, message: "Passenger not found"};}
         map<json> updateFields = {};
-        if (payload.name != ()) {updateFields["name"] = check payload.name;}
-        if (payload.phoneNumber != ()) {
-            json a = check payload.phoneNumber;
-            updateFields["phoneNumber"] = a;
-        }
+        if (payload.name != ()) {updateFields["name"] = check payload.name; }
+        if (payload.phoneNumber != ()) {updateFields["phoneNumber"] = check payload.phoneNumber;}
 
-        if (updateFields.length() > 0) {
+        if updateFields.length() > 0 {
             mongodb:Update update = {"set": updateFields};
             mongodb:UpdateResult updateResult = check passengersCollection->updateOne({"passengerId": passengerId}, update);
-
-            return {
-                success: true,
-                message: "profile updated",
-                modifiedCount: updateResult.modifiedCount
-            };
+            return {success: true, message: "profile updated", modifiedCount: updateResult.modifiedCount};
         }
+
         return {success: false, message: "No valid fields to update"};
     }
 
-
-
-    //  change passenger password
-    //  how to call it, PATCH /passenger/profile/{passengerId}/password
+    // Change password
     resource function patch profile/[string passengerId]/password(@http:Payload json payload) returns json|error {
         mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
         mongodb:Collection passengersCollection = check db->getCollection("passengers");
-        
         string currentPassword = check payload.currentPassword;
         string newPassword = check payload.newPassword;
-
         Passenger? passenger = check passengersCollection->findOne({"passengerId": passengerId, "password": currentPassword});
-
-        if passenger is () {
-            return {
-                success: false,
-                message: "Current password is incorrect"
-            };
-        }
-
-        mongodb:Update update = {"set": {"password": newPassword}};  // create update doc still
-        mongodb:UpdateResult updateResult = check passengersCollection->updateOne({"passengerId": passengerId},update);
-        return {
-            success: true,
-            message: "password changed",
-            modifiedCount: updateResult.modifiedCount
-        };
+        if passenger is () {return {success: false, message: "Current password is incorrect"};}
+        mongodb:Update update = {"set": {"password": newPassword}};
+        mongodb:UpdateResult updateResult = check passengersCollection->updateOne({"passengerId": passengerId}, update);
+        return {success: true, message: "password changed", modifiedCount: updateResult.modifiedCount};
     }
 
-    //  get all tickets for a passenger
-    //  how to call it, GET /passenger/tickets/{passengerId}
+    // Get passenger tickets
     resource function get tickets/[string passengerId]() returns json|error {
         mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
         mongodb:Collection ticketsCollection = check db->getCollection("tickets");
-
         stream<record {}, error?> result = check ticketsCollection->find({"passengerId": passengerId});
         record {}[]|error tickets = from record {} t in result select t;
-
-        record {}[] a = check tickets;
 
         if tickets is record {}[] {
             json response = {
                 passengerId: passengerId,
-                tickets: <json>a,
-                count: a.length()
+                tickets: <json>tickets,
+                count: tickets.length()
             };
             return response;
         }
-
         return {passengerId: passengerId, tickets: [], count: 0};
+    }
+}
+
+
+service /ticketConsumer on new kafka:Listener(kafka:DEFAULT_URL, {
+    groupId: "passenger-service-ticket-consumer",
+    topics: [ticketEventsTopic]
+}) {
+
+    remote function onConsumerRecord(kafka:AnydataConsumerRecord[] messages) returns error? {
+        foreach kafka:AnydataConsumerRecord message in messages {
+            string msg = check string:fromBytes(<byte[]>message.value);
+            json ticketData = check msg.fromJsonString();
+            string passengerId = check ticketData.passengerId;
+            mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
+            mongodb:Collection ticketsCollection = check db->getCollection("tickets");
+            check ticketsCollection->insertOne(check ticketData.ensureType());
+            log:printInfo("Ticket added for passengerId: " + passengerId);
+        }
     }
 }

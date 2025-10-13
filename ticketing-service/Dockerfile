@@ -6,6 +6,6 @@ COPY . /app
 
 RUN bal build --skip-tests
 
-EXPOSE 9010
+EXPOSE 9003
 
 CMD ["bal", "run"]
