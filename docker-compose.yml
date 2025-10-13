@@ -89,38 +89,4 @@ networks:
 volumes:
   mongodb-data:
   ballerina-cache:
-
-passenger-service:
-    build:
-      context: ./passenger-service
-      dockerfile: Dockerfile
-    container_name: passenger-service
-    ports:
-      - "9010:9010"
-    depends_on:
-      - mongodb
-      - kafka
-    environment:
-      MONGO_URL: mongodb://wytee:cookingdsa@mongodb:27017/?authSource=admin
-      KAFKA_URL: kafka:9092
-    volumes:
-      - ballerina-cache:/app/target
-    networks:
-      - transport-network
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-
-networks:
-  transport-network:
-    driver: bridge
-
-
-volumes:
-  mongodb-data:
-  ballerina-cache:
-
-
-  
+   
