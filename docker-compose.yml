@@ -18,12 +18,13 @@ services:
       timeout: 5s
       retries: 5
 
+
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     container_name: kafka
     depends_on:
       zookeeper:
-        condition: service_healthy
+        condition: service_healthy            # <-- only ONE depends_on block
     ports:
       - "9092:9092"
     environment:
@@ -41,6 +42,7 @@ services:
         limits:
           memory: 768M
 
+
   mongodb:
     image: mongo:7.0
     container_name: mongodb
@@ -54,10 +56,9 @@ services:
     networks:
       - transport-network
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+
+
+
 
   admin-service:
     build:
