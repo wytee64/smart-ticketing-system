@@ -1,8 +1,8 @@
 [package]
-org = "user"
-name = "ticketing_service"
+org = "transport"
+name = "transport_service"
 version = "0.1.0"
-distribution = "2201.12.10"
+distribution = "2201.8.0"
 
 [build-options]
 observabilityIncluded = true
@@ -10,9 +10,9 @@ observabilityIncluded = true
 [[dependency]]
 org = "ballerinax"
 name = "mongodb"
-version = "3.0.0"
+version = "5.0.0"
 
 [[dependency]]
 org = "ballerinax"
 name = "kafka"
-version = "3.0.0"
+version = "3.10.2"
