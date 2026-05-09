@@ -15,6 +15,8 @@ configurable string mongoPassword = ?;
 configurable string kafkaHost = "localhost:9092";
 final string ticketEventsTopic = "ticket_events";
 final string passengerEventsTopic = "passenger_events";
+final string ticketPurchasedTopic = "ticket.purchased";
+final string ticketValidationsTopic = "ticket.validations";
 
 // Types
 type Ticket record {|
@@ -155,11 +157,12 @@ service /ticketing on new http:Listener(9003) {
             eventType: "ticket_validated",
             ticketId: ticketId,
             passengerId: ticket.passengerId,
+            routeId: ticket.routeId,
             timestamp: time:utcToString(time:utcNow())
         };
 
         check kafkaProducer->send({
-            topic: ticketEventsTopic,
+            topic: ticketValidationsTopic,
             value: validationEvent.toJsonString()
         });
 
@@ -194,12 +197,15 @@ service /ticketing on new http:Listener(9003) {
             eventType: "ticket_paid",
             ticketId: ticketId,
             passengerId: existingTicket.passengerId,
+            tripId: existingTicket.routeId ?: "",
+            ticketType: existingTicket.ticketType,
             amount: existingTicket.amount,
+            purchasedAt: time:utcToString(time:utcNow()),
             timestamp: time:utcToString(time:utcNow())
         };
 
         check kafkaProducer->send({
-            topic: ticketEventsTopic,
+            topic: ticketPurchasedTopic,
             value: paymentEvent.toJsonString()
         });
 

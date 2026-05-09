@@ -15,6 +15,7 @@ configurable string mongoPassword = ?;
 configurable string kafkaHost = "localhost:9092";
 final string passengerEventsTopic = "passenger_events";
 final string ticketEventsTopic = "ticket_events";
+final string ticketPurchasedTopic = "ticket.purchased";
 
 
 type Passenger record {|
@@ -39,7 +40,7 @@ mongodb:Client mongoDb = check new ({
 });
 
 
-kafka:Producer kafkaProducer = check new (kafka:DEFAULT_URL, {
+kafka:Producer kafkaProducer = check new (kafkaHost, {
     clientId: "passenger_service_producer"
 });
 
@@ -151,9 +152,9 @@ service /passenger on new http:Listener(9010) {
 }
 
 
-service /ticketConsumer on new kafka:Listener(kafka:DEFAULT_URL, {
+service /ticketConsumer on new kafka:Listener(kafkaHost, {
     groupId: "passenger-service-ticket-consumer",
-    topics: [ticketEventsTopic]
+    topics: [ticketPurchasedTopic]
 }) {
 
     remote function onConsumerRecord(kafka:AnydataConsumerRecord[] messages) returns error? {

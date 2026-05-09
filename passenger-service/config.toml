@@ -1,5 +1,6 @@
-mongoHost = "localhost"
+mongoHost = "mongodb"
 mongoPort = 27017
-mongoDatabase = "passenger_service"
+mongoDatabase = "passenger_db"
 mongoUsername = "wytee"
 mongoPassword = "cookingdsa"
+kafkaHost = "kafka:9092"

@@ -1,0 +1,4 @@
+mongoHost = "mongodb"
+mongoPort = 27017
+databaseName = "notification_db"
+kafkaHost = "kafka:9092"

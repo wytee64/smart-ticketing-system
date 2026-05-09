@@ -12,7 +12,7 @@ configurable int mongoPort = ?;
 configurable string databaseName = ?;
 
 // Kafka configuration
-configurable string kafkaBootstrapServers = ?;
+configurable string kafkaHost = ?;
 
 // Data types
 type Notification record {
@@ -54,7 +54,7 @@ mongodb:Client mongoClient = check new ({
         allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     }
 }
-service /api/v1/notification on new http:Listener(9010) {
+service /api/v1/notification on new http:Listener(9011) {
 
     // Simple health endpoint for uniform checks
     resource function get health() returns string|error {
@@ -217,7 +217,7 @@ function sendNotification(Notification notification) {
 }
 
 // Kafka consumer for schedule updates
-listener kafka:Listener scheduleListener = new (kafkaBootstrapServers, {
+listener kafka:Listener scheduleListener = new (kafkaHost, {
     groupId: "notification-schedule-group",
     topics: ["schedule.updates"]
 });
@@ -275,7 +275,7 @@ service kafka:Service on scheduleListener {
 }
 
 // Kafka consumer for ticket validations
-listener kafka:Listener ticketValidationListener = new (kafkaBootstrapServers, {
+listener kafka:Listener ticketValidationListener = new (kafkaHost, {
     groupId: "notification-validation-group",
     topics: ["ticket.validations"]
 });
@@ -320,7 +320,7 @@ service kafka:Service on ticketValidationListener {
 }
 
 // Kafka consumer for payment confirmations
-listener kafka:Listener paymentListener = new (kafkaBootstrapServers, {
+listener kafka:Listener paymentListener = new (kafkaHost, {
     groupId: "notification-payment-group",
     topics: ["payments.processed"]
 });

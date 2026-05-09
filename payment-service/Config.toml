@@ -8,3 +8,17 @@
 # https://ballerina.io/learn/provide-values-to-configurable-variables/#provide-via-toml-syntax
 #
 # Note: This file is automatically added to .gitignore to protect sensitive information.
+#
+# Example:
+# mongoHost = "mongodb"
+# mongoPort = 27017
+# mongoDatabase = "payment_db"
+# mongoUsername = "wytee"
+# mongoPassword = "cookingdsa"
+# kafkaHost = "kafka:9092"
+mongoHost = "mongodb"
+mongoPort = 27017
+mongoDatabase = "payment_db"
+mongoUsername = "wytee"
+mongoPassword = "cookingdsa"
+kafkaHost = "kafka:9092"
