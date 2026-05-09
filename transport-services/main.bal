@@ -1,3 +1,4 @@
+import ballerina/http;
 import ballerina/io;
 import ballerina/log;
 import ballerina/time;
@@ -5,7 +6,6 @@ import ballerinax/kafka;
 import ballerinax/mongodb;
 import ballerina/regex;
 
-// === KAFKA CONFIGURATION ===//
 configurable string kafkaHost = "localhost:9092";
 
 // Kafka Producer for sending schedule updates
@@ -26,7 +26,6 @@ kafka:ConsumerConfiguration consumerConfig = {
 
 kafka:Consumer transportConsumer = check new (kafkaHost, consumerConfig);
 
-// === MONGODB CONFIGURATION ===
 configurable string mongoUrl = "mongodb://wytee:cookingdsa@localhost:27017";
 configurable string databaseName = "transport_db";
 
@@ -34,7 +33,6 @@ mongodb:Client mongoClient = check new ({
     connection: mongoUrl
 });
 
-// === DATA TYPES ===
 type ScheduleUpdate record {|
     string updateId?;
     string tripId;
@@ -53,15 +51,56 @@ type TicketPurchasedEvent record {|
     string purchasedAt;
 |};
 
-// === MAIN APPLICATION ===
+service /transport on new http:Listener(9002) {
+
+    resource function get routes() returns json[]|error {
+        mongodb:Database database = check mongoClient->getDatabase(databaseName);
+        mongodb:Collection routesCollection = check database->getCollection("routes");
+        
+        stream<record {}, error?> result = check routesCollection->find();
+        return from record {} r in result select <json>r;
+    }
+
+    resource function get routes/[string id]() returns json|http:NotFound|error {
+        mongodb:Database database = check mongoClient->getDatabase(databaseName);
+        mongodb:Collection routesCollection = check database->getCollection("routes");
+        
+        record {}? result = check routesCollection->findOne({"_id": id});
+        if result is record {} {
+            return <json>result;
+        }
+        return http:NOT_FOUND;
+    }
+
+    resource function get routes/[string routeId]/trips() returns json[]|error {
+        mongodb:Database database = check mongoClient->getDatabase(databaseName);
+        mongodb:Collection tripsCollection = check database->getCollection("trips");
+        
+        stream<record {}, error?> result = check tripsCollection->find({"routeId": routeId});
+        return from record {} t in result select <json>t;
+    }
+
+    resource function get trips/[string id]() returns json|http:NotFound|error {
+        mongodb:Database database = check mongoClient->getDatabase(databaseName);
+        mongodb:Collection tripsCollection = check database->getCollection("trips");
+        
+        record {}? result = check tripsCollection->findOne({"_id": id});
+        if result is record {} {
+            return <json>result;
+        }
+        return http:NOT_FOUND;
+    }
+
+    resource function get health() returns string => "Transport Service is UP";
+}
+
 public function main() returns error? {
-    io:println("=== SMART PUBLIC TRANSPORT SYSTEM ===");
-    io:println("=== TRANSPORT SERVICE (TERMINAL MODE) ===");
+    io:println("SMART PUBLIC TRANSPORT SYSTEM");
+    io:println("TRANSPORT SERVICE (TERMINAL MODE)");
     
     // Start Kafka consumer in background
     _ = start kafkaConsumerWorker();
     
-    // Main menu loop
     while true {
         printMainMenu();
         string choice = io:readln("Choose an option (1-6): ");
@@ -73,17 +112,21 @@ public function main() returns error? {
             "4" => { _ = check viewTripsForRoute(); }
             "5" => { _ = check updateTripStatus(); }
             "6" => { 
-                io:println("Exiting Transport Service...");
+                io:println("Exiting Transport Service");
                 break; 
             }
-            _ => { io:println("Invalid option! Please try again."); }
+            _ => 
+            {
+                io:println("Invalid option"); 
+                io:println("Please try again");
+            }
         }
     }
 }
 
 // === KAFKA CONSUMER WORKER ===
 function kafkaConsumerWorker() returns error? {
-    io:println("Starting Kafka Consumer for ticket.purchased topic...");
+    io:println("Starting Kafka Consumer for ticket.purchased topic");
     
     while true {
         kafka:ConsumerRecord[] records = check transportConsumer->poll(1000);
@@ -91,7 +134,6 @@ function kafkaConsumerWorker() returns error? {
         foreach var kafkaRecord in records {
             handleTicketPurchased(kafkaRecord);
             
-            // Commit offset after processing
             check transportConsumer->commit();
         }
     }
@@ -100,7 +142,6 @@ function kafkaConsumerWorker() returns error? {
 function handleTicketPurchased(kafka:ConsumerRecord kafkaRecord) {
     io:println("\n RECEIVED TICKET PURCHASE NOTIFICATION:");
     
-    // Parse the ticket purchased event from byte array
     byte[] messageBytes = kafkaRecord.value;
     string|error messageStr = string:fromBytes(messageBytes);
     
@@ -133,7 +174,6 @@ function handleTicketPurchased(kafka:ConsumerRecord kafkaRecord) {
     }
 }
 
-// === KAFKA PRODUCER FUNCTIONS ===
 function publishScheduleUpdate(ScheduleUpdate update) returns error? {
     update.updateId = "UPDATE_" + time:utcNow()[0].toString();
     update.timestamp = time:utcToString(time:utcNow());
@@ -151,7 +191,6 @@ function publishScheduleUpdate(ScheduleUpdate update) returns error? {
     io:println("   Message: " + update.message);
 }
 
-// === MENU FUNCTIONS ===
 function printMainMenu() {
     io:println("\n MAIN MENU:");
     io:println("1. Create New Route");
@@ -173,7 +212,6 @@ function createNewRoute() returns error? {
     string distanceInput = io:readln("Distance (km): ");
     string baseFareInput = io:readln("Base Fare: ");
 
-    // Parse decimal values with error handling
     decimal|error distance = decimal:fromString(distanceInput);
     if distance is error {
         return error("Invalid distance: " + distanceInput);
@@ -216,7 +254,6 @@ function createNewTrip() returns error? {
     string totalSeatsInput = io:readln("Total Seats: ");
     string driverId = io:readln("Driver ID (optional): ");
 
-    // Parse integer with error handling
     int|error totalSeats = int:fromString(totalSeatsInput);
     if totalSeats is error {
         return error("Invalid total seats: " + totalSeatsInput);
@@ -325,7 +362,7 @@ function updateTripStatus() returns error? {
     );
     
     if updateResult.modifiedCount > 0 {
-        // Publish schedule update
+
         ScheduleUpdate update = {
             tripId: tripId,
             updateType: newStatus,
@@ -335,7 +372,7 @@ function updateTripStatus() returns error? {
         };
         
         _ = check publishScheduleUpdate(update);
-        io:println(" Trip status updated and notification sent!");
+        io:println(" Trip status updated and notification sent");
     } else {
         io:println(" Trip not found!");
     }

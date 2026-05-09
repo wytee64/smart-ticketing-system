@@ -58,7 +58,6 @@ kafka:Producer kafkaProducer = check new (kafkaHost, {
     clientId: "ticketing_service_producer"
 });
 
-// HTTP Service
 service /ticketing on new http:Listener(9003) {
 
     // Create ticket request
@@ -176,7 +175,7 @@ service /ticketing on new http:Listener(9003) {
         };
     }
 
-    // Update ticket status to PAID (simulating payment confirmation)
+    // Update ticket status to PAID
     resource function put [string ticketId]/pay() returns json|error {
         mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
         mongodb:Collection ticketsCollection = check db->getCollection("tickets");
@@ -216,7 +215,6 @@ service /ticketing on new http:Listener(9003) {
         };
     }
 
-    // Other functions remain the same...
     resource function get [string ticketId]() returns Ticket|http:NotFound|error {
         mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
         mongodb:Collection ticketsCollection = check db->getCollection("tickets");
@@ -255,7 +253,7 @@ service /ticketing on new http:Listener(9003) {
     }
 }
 
-// Utility functions (same as before)
+
 function calculateTicketAmount(string ticketType, int? numberOfRides) returns decimal|error {
     match ticketType {
         "SINGLE_RIDE" => {
