@@ -6,7 +6,7 @@ import ballerinax/mongodb;
 import ballerina/regex;
 
 // === KAFKA CONFIGURATION ===//
-configurable string kafkaBootstrapServers = "localhost:9092";
+configurable string kafkaHost = "localhost:9092";
 
 // Kafka Producer for sending schedule updates
 kafka:ProducerConfiguration producerConfig = {
@@ -15,7 +15,7 @@ kafka:ProducerConfiguration producerConfig = {
     retryCount: 3
 };
 
-kafka:Producer scheduleProducer = check new (kafkaBootstrapServers, producerConfig);
+kafka:Producer scheduleProducer = check new (kafkaHost, producerConfig);
 
 // Kafka Consumer for receiving ticket purchases
 kafka:ConsumerConfiguration consumerConfig = {
@@ -24,7 +24,7 @@ kafka:ConsumerConfiguration consumerConfig = {
     topics: ["ticket.purchased"]
 };
 
-kafka:Consumer transportConsumer = check new (kafkaBootstrapServers, consumerConfig);
+kafka:Consumer transportConsumer = check new (kafkaHost, consumerConfig);
 
 // === MONGODB CONFIGURATION ===
 configurable string mongoUrl = "mongodb://wytee:cookingdsa@localhost:27017";

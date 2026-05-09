@@ -7,14 +7,14 @@ import ballerinax/kafka;
 configurable string mongoHost = "localhost";
 configurable int mongoPort = 27017;
 configurable string mongoDatabase = "db";
-configurable string kafkaBootstrapServers = "localhost:9092";
+configurable string kafkaHost = "localhost:9092";
 
 
 final mongodb:Client mongoDb = check new ({
     connection: { serverAddress: { host: mongoHost, port: mongoPort } }
 });
 
-final kafka:Producer kafkaProducer = check new (kafkaBootstrapServers, {
+final kafka:Producer kafkaProducer = check new (kafkaHost, {
     clientId: "payment-service-producer",
     acks: "1", retryCount: 3, maxBlock: 5000, requestTimeout: 5000
 });
