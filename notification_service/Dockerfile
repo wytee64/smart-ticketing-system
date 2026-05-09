@@ -1,15 +1,16 @@
-# Use Ballerina runtime image with multi-platform support
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 # Use Ballerina runtime image with multi-platform support
 FROM --platform=$BUILDPLATFORM ballerina/ballerina:2201.12.10
 
 # Set working directory
 WORKDIR /app
 
 # Copy Ballerina project files
-COPY Ballerina.toml .
-COPY main.bal .
+COPY . .
 
 # Build the Ballerina application
+USER root
 RUN bal build
+USER ballerina
 
 # Expose port
 EXPOSE 8085

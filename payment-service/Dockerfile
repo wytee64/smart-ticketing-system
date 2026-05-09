@@ -1,12 +1,11 @@
-FROM ballerina/ballerina:2201.8.0
+FROM ballerina/ballerina:2201.12.10
 
 WORKDIR /app
 
-COPY Ballerina.toml .
-COPY service.bal .
+COPY . .
 
-RUN bal build --skip-tests
-
+USER root
+RUN bal build
+USER ballerina
 EXPOSE 8084
-
-CMD ["bal", "run", "--offline", "/app"]
+CMD ["bal", "run", "target/bin/payment_service.jar"]

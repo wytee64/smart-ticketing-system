@@ -1,11 +1,11 @@
-FROM ballerina/ballerina:2201.12.7
+FROM ballerina/ballerina:2201.12.10
 
 WORKDIR /app
 
 COPY . /app
 
-RUN bal build --skip-tests
-
+USER root
+RUN bal build
+USER ballerina
 EXPOSE 9010
-
-CMD ["bal", "run"]
+CMD ["bal", "run", "target/bin/passenger_service.jar"]

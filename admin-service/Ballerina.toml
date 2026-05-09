@@ -2,7 +2,7 @@
 org = "shaan"
 name = "admin_service"
 version = "0.1.0"
-distribution = "2201.12.7"
+distribution = "2201.12.10"
 
 [build-options]
 observabilityIncluded = true
