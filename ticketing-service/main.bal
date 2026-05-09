@@ -24,6 +24,7 @@ type Ticket record {|
     string passengerId;
     string ticketType;
     string? routeId;
+    string? tripId;
     decimal amount?;
     string status?;
     string createdAt?;
@@ -36,6 +37,7 @@ type TicketRequest record {|
     string passengerId;
     string ticketType;
     string? routeId;
+    string? tripId;
     int? numberOfRides;
 |};
 
@@ -75,6 +77,7 @@ service /ticketing on new http:Listener(9003) {
             passengerId: ticketReq.passengerId,
             ticketType: ticketReq.ticketType,
             routeId: ticketReq.routeId,
+            tripId: ticketReq.tripId,
             amount: amount,
             status: "CREATED",
             createdAt: time:utcToString(time:utcNow()),
@@ -196,7 +199,7 @@ service /ticketing on new http:Listener(9003) {
             eventType: "ticket_paid",
             ticketId: ticketId,
             passengerId: existingTicket.passengerId,
-            tripId: existingTicket.routeId ?: "",
+            tripId: existingTicket.tripId ?: "",
             ticketType: existingTicket.ticketType,
             amount: existingTicket.amount,
             purchasedAt: time:utcToString(time:utcNow()),

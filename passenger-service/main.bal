@@ -25,6 +25,18 @@ type Passenger record {|
     string phoneNumber;
 |};
 
+type Ticket record {|
+    string ticketId;
+    string passengerId;
+    string ticketType;
+    string? routeId;
+    string? tripId;
+    decimal amount;
+    string status;
+    string purchasedAt;
+    string timestamp;
+|};
+
 mongodb:Client mongoDb = check new ({
     connection: {
         serverAddress: {
@@ -160,12 +172,22 @@ service /ticketConsumer on new kafka:Listener(kafkaHost, {
     remote function onConsumerRecord(kafka:AnydataConsumerRecord[] messages) returns error? {
         foreach kafka:AnydataConsumerRecord message in messages {
             string msg = check string:fromBytes(<byte[]>message.value);
-            json ticketData = check msg.fromJsonString();
-            string passengerId = check ticketData.passengerId;
+            json|error payload = msg.fromJsonString();
+            if payload is error {
+                log:printError("Invalid JSON from Kafka", payload);
+                continue;
+            }
+
+            Ticket|error ticket = payload.cloneWithType(Ticket);
+            if ticket is error {
+                log:printError("Invalid ticket data from Kafka", ticket);
+                continue;
+            }
+
             mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
             mongodb:Collection ticketsCollection = check db->getCollection("tickets");
-            check ticketsCollection->insertOne(check ticketData.ensureType());
-            log:printInfo("Ticket added for passengerId: " + passengerId);
+            check ticketsCollection->insertOne(ticket);
+            log:printInfo("Ticket added for passengerId: " + ticket.passengerId);
         }
     }
 }
