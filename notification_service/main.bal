@@ -6,12 +6,10 @@ import ballerina/io;
 import ballerinax/mongodb;
 import ballerinax/kafka;
 
-// MongoDB configuration
 configurable string mongoHost = ?;
 configurable int mongoPort = ?;
 configurable string databaseName = ?;
 
-// Kafka configuration
 configurable string kafkaHost = ?;
 
 // Data types
@@ -203,7 +201,7 @@ service /api/v1/notification on new http:Listener(9011) {
 function sendNotification(Notification notification) {
     string separator = "============================================================";
     io:println(separator);
-    io:println("📢 NEW NOTIFICATION");
+    io:println("NEW NOTIFICATION");
     io:println(separator);
     io:println("To: " + (notification.recipientId == "ALL" ? "All Users" : "User " + notification.recipientId));
     io:println("Type: " + notification.'type);
@@ -216,7 +214,6 @@ function sendNotification(Notification notification) {
     io:println(separator);
 }
 
-// Kafka consumer for schedule updates
 listener kafka:Listener scheduleListener = new (kafkaHost, {
     groupId: "notification-schedule-group",
     topics: ["schedule.updates"]
@@ -382,5 +379,5 @@ service kafka:Service on paymentListener {
 }
 
 public function main() returns error? {
-    log:printInfo("Notification Service started on port 8085");
+    log:printInfo("Notification Service started on port 9011");
 }

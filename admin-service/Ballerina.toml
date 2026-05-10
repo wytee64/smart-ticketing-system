@@ -10,9 +10,9 @@ observabilityIncluded = true
 [[dependency]]
 org = "ballerinax"
 name = "mongodb"
-version = "2.6.0"  # Compatible with 2201.12.7; 3.0.0 might need 2201.12.10
+version = "5.2.2"
 
 [[dependency]]
 org = "ballerinax"
 name = "kafka"
-version = "2.6.0"  # Match MongoDB version for consistency
+version = "4.6.0"

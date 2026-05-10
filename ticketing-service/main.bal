@@ -129,10 +129,10 @@ service /ticketing on new http:Listener(9003) {
             };
         }
 
-        if (ticket.status != "PAID" && ticket.status != "CREATED") {
+        if (ticket.status != "PAID") {
             return {
                 "success": false,
-                "message": "Ticket cannot be validated. Status: " + (ticket.status ?: "UNKNOWN")
+                "message": "Ticket cannot be validated. Status must be PAID. Current Status: " + (ticket.status ?: "UNKNOWN")
             };
         }
 
@@ -234,17 +234,18 @@ service /ticketing on new http:Listener(9003) {
         mongodb:Collection ticketsCollection = check db->getCollection("tickets");
 
         stream<Ticket, error?> result = check ticketsCollection->find({"passengerId": passengerId});
-        Ticket[]|error tickets = from Ticket t in result select t;
-
-        if tickets is Ticket[] {
-            return {
-                passengerId: passengerId,
-                tickets: <json>tickets,
-                count: tickets.length()
+        Ticket[] tickets = [];
+        check from Ticket t in result
+            do {
+                tickets.push(t);
             };
-        }
+        check result.close();
 
-        return {passengerId: passengerId, tickets: [], count: 0};
+        return {
+            passengerId: passengerId,
+            tickets: <json>tickets,
+            count: tickets.length()
+        };
     }
 
     resource function get health() returns json {

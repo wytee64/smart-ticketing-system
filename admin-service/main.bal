@@ -2,6 +2,8 @@ import ballerina/http;
 import ballerina/log;
 import ballerina/time;
 
+configurable string transportServiceUrl = "http://transport-service:9002";
+
 // Types
 type SalesReport record {|
     string reportId?;
@@ -27,9 +29,11 @@ type TrafficReport record {|
 SalesReport[] salesReports = [];
 TrafficReport[] trafficReports = [];
 
+final http:Client transportClient = check new (transportServiceUrl);
+
 service /admin on new http:Listener(9006) {
 
-    resource function post reports/sales(@http:Payload json reportParams) returns json|error {
+    resource function post reports/sales(@http:Payload json reportParams) returns SalesReport|error {
         string reportId = "RPT" + time:utcNow()[0].toString();
 
         SalesReport report = {
@@ -49,16 +53,18 @@ service /admin on new http:Listener(9006) {
         return report;
     }
 
-    resource function post reports/traffic(@http:Payload json reportParams) returns json|error {
+    resource function post reports/traffic(@http:Payload json reportParams) returns TrafficReport|error {
         string reportId = "TRPT" + time:utcNow()[0].toString();
         string routeId = check reportParams.routeId;
 
-        http:Client transportClient = check new("http://transport-service:9002");
         json|error routeResponse = transportClient->get("/transport/routes/" + routeId);
         
         string routeName = "Unknown Route";
         if (routeResponse is json) {
-            routeName = check routeResponse.routeName;
+            json|error rName = routeResponse.routeName;
+            if rName is json {
+                routeName = rName.toString();
+            }
         }
 
         TrafficReport report = {

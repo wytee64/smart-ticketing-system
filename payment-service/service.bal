@@ -114,7 +114,14 @@ service /payments on new http:Listener(8084) {
         }
 
         string now = time:utcToString(time:utcNow());
-        _ = check coll->updateOne({ _id: id }, { "$set": { status: "REFUNDED", processedAt: now } });
+        mongodb:UpdateResult updateResult = check coll->updateOne({ _id: id, status: "CONFIRMED" }, { "$set": { status: "REFUNDED", processedAt: now } });
+
+        if updateResult.modifiedCount == 0 {
+            http:Response res = new;
+            res.statusCode = 400;
+            res.setJsonPayload({ message: "Refund failed. Payment might already be refunded or not found." });
+            return res;
+        }
 
         json event = {
             paymentId: id, ticketId: p.ticketId, passengerId: p.passengerId,
@@ -128,7 +135,7 @@ service /payments on new http:Listener(8084) {
         return { paymentId: id, status: "REFUNDED", refundedAt: now, message: "Payment refunded" };
     }
 
-    resource function get all() returns json|error {
+    resource function get summary() returns json|error {
         mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
         mongodb:Collection coll = check db->getCollection("payments");
 

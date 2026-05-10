@@ -149,17 +149,20 @@ service /passenger on new http:Listener(9010) {
         mongodb:Database db = check mongoDb->getDatabase(mongoDatabase);
         mongodb:Collection ticketsCollection = check db->getCollection("tickets");
         stream<record {}, error?> result = check ticketsCollection->find({"passengerId": passengerId});
-        record {}[]|error tickets = from record {} t in result select t;
-
-        if tickets is record {}[] {
-            json response = {
-                passengerId: passengerId,
-                tickets: <json>tickets,
-                count: tickets.length()
+        
+        record {}[] tickets = [];
+        check from record {} t in result
+            do {
+                tickets.push(t);
             };
-            return response;
-        }
-        return {passengerId: passengerId, tickets: [], count: 0};
+        check result.close();
+
+        json response = {
+            passengerId: passengerId,
+            tickets: <json>tickets,
+            count: tickets.length()
+        };
+        return response;
     }
 }
 

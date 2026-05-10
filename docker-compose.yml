@@ -118,7 +118,7 @@ services:
       - kafka
     environment:
       MONGO_URL: mongodb://wytee:cookingdsa@mongodb:27017/?authSource=admin
-      KAFKA_URL: kafka:9092
+      KAFKAHOST: kafka:9092
     volumes:
       - ballerina-cache:/app/target
     networks:
